@@ -1,0 +1,30 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# ── PyInstaller build output ──
+dist/
+build/
+*.spec.bak
+
+# ── Runtime artifacts ──
+err.log
+*.log
+
+# ── Editor / OS ──
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Local notes / personal files ──
+handoff.md
+feedback.md
+post.md
+design/
+.claude/
