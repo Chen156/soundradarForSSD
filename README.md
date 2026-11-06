@@ -1,9 +1,12 @@
-<h1 align="center">Visual Audio Overlay</h1>
+# SoundRadar360 · 单耳聋玩家的《暗区突围：无限》声音方向雷达
+
+<h1 align="center">SoundRadar360</h1>
 
 <p align="center">
-  <b>See what you can't hear.</b><br>
-  An accessibility overlay that turns in-game sound into a real-time visual radar,
-  built for gamers with single-sided deafness (SSD) or hearing loss.
+  <b>看得见你听不见的。</b><br>
+  一款把游戏声音变成实时视觉雷达的无障碍工具，专为单耳聋（SSD）玩家打造，
+  基于 <a href="https://github.com/mike-s-zaugg/VisualAudioOverlay">mike-s-zaugg/VisualAudioOverlay</a>
+  （FSL-1.1-MIT 许可）深度改造，针对《暗区突围：无限》（Arena Breakout: Infinite）校准。
 </p>
 
 <p align="center">
@@ -14,190 +17,91 @@
 
 ---
 
-# 🎯 SSD 单耳聋改进版（本分支）
+## 这是什么
 
-本分支基于 [mike-s-zaugg/VisualAudioOverlay](https://github.com/mike-s-zaugg/VisualAudioOverlay)
-（FSL-1.1-MIT 许可），针对**单耳聋玩家在《暗区突围：无限》(Arena Breakout: Infinite)**
-的实际痛点做的改进：
+单耳聋玩家在射击游戏里最大的痛点不是"听不见"，而是**无法判断声音来源方向**。
+SoundRadar360 监听 Windows 音频回环（纯监听，**绝不改动游戏声音**），把周围的声音
+实时画成一个 360° 雷达：**方向、距离、上下、类型**，一眼可读。
 
-## 1. 脚步声明显可见（自适应噪声门 + 瞬态增强）
+> 核心设计原则：**方向精度永远优先于声音类型**——单耳玩家自己能听出枪声和脚步声，
+> 雷达的价值在于告诉他声音**从哪个方向来**。
 
-原版用一个固定的绝对阈值和 50ms 整块 RMS 判声，环境音（雨、风、载具声）稍微一响，
-安静脚步就被淹没；显示强度还是线性映射，弱声音几乎不可见。
+## 功能总览（v0.7.x）
 
-本分支：
+### 🧭 方向系统（核心）
 
-| 机制 | 说明 |
-|------|------|
-| **自适应噪声门 (Adaptive Gate)** | 用 0.8 秒滑动窗口的最小电平持续估计环境噪声底。雨声等持续环境音会自动"变成背景"，只有高于噪声底的**事件**才点亮雷达；安静时噪声底回落，轻脚步依然醒目。 |
-| **瞬态（起音）增强** | 脚步声是短促冲击。分块电平上升越快，额外加的分贝越高（最多 +7dB），脚步声"踢踏"感会明显弹出。 |
-| **对数亮度曲线** | 强度按信噪比 dB 映射并开方压缩：高于噪声底 6dB 的轻脚步已清晰可见，27dB 拉满。 |
-| **峰值保持 + 残影** | 每个光弧保留约 1.15 秒，强事件带一道内圈残影，连续脚步看起来是"脉动轨迹"而不是一闪而过。 |
+- **左右方向精确**：双耳强度差（ILD）+ 双耳时间差（ITD）融合——脚步声这类低频声用
+  ITD（低频的真实方位线索），枪声用 ILD，带一致性保护；
+- **四方位标定**：用训练场"前/后/左/右"实测样本验证，左右误差接近 0°；
+- **前后判定三件套**：
+  1. 亮声（枪声）的 HRTF 频谱线索自动判前后；
+  2. **注意力机制**：每种声音独立跟踪 1 秒（持续发声自动续期、消失后 1 秒到期），
+     你转身时标记稳稳贴在声源上，不同声音互不干扰；
+  3. **侧头修正系统**：转身时前方声源侧向角缩小、后方声源侧向角放大——多声源同向
+     偏移时雷达**自动判定前后**；单声源时显示**偏移弧+度数**供你自己读；
+  4. **中线穿越相位跟踪**：锚定后（多源转身判定或枪声线索），旋转过程中每次穿越
+     中线都自动标注前后，后方声源钉在 180°；
+- 无法判定前后时如实显示**正反两弧**（中线附近等强度），绝不武断指错方向；
+- **上下方向**：`+` = 声音在你上方（楼上/坡上），`-` = 下方，无标记 = 同层。
 
-## 2. 身后声音能看见了（立体声 HRTF 全 360° 方位）
+### 🎨 四类声音一眼可辨
 
-原版在立体声耳机下只输出 ±90°（纯左右），身后根本不存在；本分支从立体声重建完整 360°：
+| 颜色 | 类别 | 判定 |
+|------|------|------|
+| 🔵 蓝 | 脚步声 | 规律节奏（容忍漏步）或离轴孤立闷响（敌人单步/跳跃/开门） |
+| 🔴 红 | 战斗声 | 爆裂特征 / 巨响通道 / 连发持续轰鸣（枪、手雷、爆炸） |
+| 🟣 紫+❗ | 静步威胁 | 极轻的脚步声（含你自己的静步，实时显示） |
+| 🟡 黄 | 杂音 | 正中闷响（开门/舔包/换弹/被击中）、机器噪声等 |
 
-- **左右**：中/低频段双耳电平差（ILD），按头部遮蔽物理模型（ILD∝sinθ 的反正弦逆映射）；
-- **前后**：每个事件 3.5–8kHz / 120–700Hz 能量比与**持续学习的环境基线**对比——
-  比环境亮=前方，暗=后方（HRTF 头部遮蔽）。强线索 150ms 翻转，弱线索慢漂移防闪烁。
+- 你自己的跑步/行走脚步与枪声 → 圆心白色小脉冲（屏蔽确认，不占方向）；
+- 环境风声/引擎声 → 起音后不回落，完全不显示；
+- 快出现、慢消失 + 敌情残影（熄灭后保留最近声音的方向标记）。
 
-> **重要前提**：游戏需输出 HRTF/双耳立体声（游戏内选"耳机/3D 音频/空间音频"）。
-> 纯平面立体声摆位下前后不可判定，请把 Mode 设为 `Stereo L/R only`。
+### 📐 距离与显示
 
-## 3. 上下方向（高度）
+- 光弧离圆心越近 = 越近，三条虚线参考环；
+- 快攻慢放（首帧即亮、缓慢淡出 3 秒+）；
+- 老化标记自动变宽/虚线（方向随时间不确定的诚实表示）。
 
-- 6–9.5kHz 陷波带 vs 9.5–14kHz 明亮带之比（对比自适应基线）估计高度，低信噪比自动降置信度；
-- 显示：上方=▲箭头+暖色，下方=▼箭头+冷色；真实 7.1.4 回环输出精确高度。
+### 📦 自动化校准
 
-## 4. 战斗声与脚步声区分（物理声学特征）
+所有参数基于**真实游戏录音**校准，无需手动调参：
 
-"战斗声" = 枪声 + 手雷/爆炸类（进攻手雷、燃烧瓶、震撼弹；烟雾弹除外，归杂音）。
-战斗声和脚步物理上截然不同，无需游戏素材文件即可稳健区分（游戏 pak 是加密的自定义
-封装，无法合法解包，故采用物理特征 + 实机日志校准）：
+- 16 把枪的第一人称枪声库（SCAR/ACE/AK12/AN94/FAMAS/95/191/H416/A545/ZC807/FAL/
+  RPK16/AKM/AUG/AEK，含消音对比）；
+- 六批步态样本（软/硬地 × 跑/走/静步）；
+- 训练场机器声样本（中频金属环守卫，排除机器噪声）；
+- 原地自转 360° 标定（方位平滑与跟踪参数）。
 
-- 战斗声：波峰因数（峰值/自身 RMS）>14.5dB 且 4kHz 以上高频占比 >0.22；
-- 脚步：波峰因数 ≤14dB 且（低频占比 >0.3 或高频占比 ≤0.25）；
-- 超过 max_amp 的巨响（爆炸等）无条件判为战斗声类事件；
-- 显示：战斗声=**红色宽闪光**（可关闭），脚步=蓝色弧，其他=淡白弧（烟雾弹、被击中、喘息、换弹）。
+## 安装与使用
 
-**Event log**：开启后在程序目录写 `event_log.csv`（每个事件的 snr/波峰/频带占比/
-方位/距离），并且把每个枪声/脚步事件的**原始音频片段存成 WAV** 到 `recordings\`
-（每局一个 session 文件夹，最多 500 条）。用这些真实录音即可校准阈值。
+1. 安装到 `D:\Program Files\SoundRadar360\`（或任意目录），运行 `SoundRadar360.exe`；
+2. 游戏音频输出选你的**耳机**（保持立体声/耳机模式，不要开游戏内单声道）；
+3. 雷达仪表盘：选显示器 → **开始** → 可选：把雷达窗口放到副屏/游戏上方；
+4. 你的脚步声/枪声应只在圆心闪白脉冲；静步显示紫色。
 
-## 5. 距离显示
+> 软件为纯监听：不修改、不混音、不输出任何音频到游戏设备。
 
-- 距离 = f(信噪比)：比环境噪声底响 34dB≈贴脸，6dB≈雷达外环，每 4dB 翻倍；
-- 起音越陡越近（近处声音更"干"），明显偏暗的声音推远一点；
-- 显示：**光弧到圆心的距离**=远近（中心=近，外环=远），三条虚线为近/中/远参考环。
+## 开发
 
-## 6. 屏蔽玩家自己的脚步声/战斗声
-
-- 自己的战斗声（枪声/手雷投掷）：正前方（±15°）+ 极响（SNR>30dB 或超过 max_amp）→ 屏蔽；
-- 自己的脚步：正前方 + 响亮（SNR>24dB）+ **节奏稳定**（连续 4 步、间隔 0.25–0.9s、
-  抖动 <35%）→ 屏蔽（节奏检测防止误杀正前方的敌人脚步）；
-- 被屏蔽的声音在**圆心闪一个白色小脉冲**作为确认，不占方向显示。
-
----
-
-# 雷达怎么看（头朝 N）
-
-```
-         ▲ 前进方向
-        N
-   NW ／  ＼ NE        · 光弧方位 = 声音方向（N=前，E=右，S=后，W=左）
-  W ｜  你  ｜ E        · 离圆心越近 = 越近（距离）
-   SW ＼  ／ SE        · 蓝色弧=脚步 红色闪光=战斗声 淡白弧=其他(含烟雾弹)
-        S              · 内圈+▲/暖色=上方  外圈+▼/冷色=下方
-                       · 圆心白色脉冲 = 自己的声音（已屏蔽）
-```
-
-# 快速上手（暗区突围）
-
-1. 游戏音频设置：耳机输出 + **开启耳机/3D 音频/空间音频**（关键！）。
-2. 启动程序 → Preset 选 **Footsteps - ABI**（90–7000Hz 脚步带通 + 增强 2.6×）。
-3. RADAR 卡选游戏进程（或 All）→ Start → 拖动雷达到合适位置。
-
-## 推荐调节顺序
-
-| 症状 | 调节 |
-|------|------|
-| 脚步太暗/太亮 | **Footstep Boost**（先调，默认 2.0x） |
-| 环境音也一直亮 | 确认 **Adaptive Gate** 开；等 1–2 秒收敛 |
-| 前后方向反了 | **Front/Back Bias**（-1…+1） |
-| 枪声不显示/太抢眼 | SOUND TYPES：Gunshots 开关 / 换色 |
-| 自己的脚步没被屏蔽 | 确认 Own footsteps 开；Sensitivity 别太低 |
-| 想只用左右模式 | Mode → Stereo L/R only |
-
-**单耳听音**：保持 Windows"单声道音频"关闭，用本程序 HARDWARE 卡的 **Mono Output**
-（VB-CABLE）把游戏合成单声道送进健康耳，雷达方向不受影响。
-
-# 从源码运行
-
-```bash
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python main.py          # Windows 10 19041+ / Python 3.10+
+
+python -m unittest discover -s tests    # 57 项测试
+python main.py                          # 源码运行
+
+# 打包（one-dir）
+python -m PyInstaller AudioRadarFolder.spec --noconfirm --clean
 ```
 
-# 打包 exe
+- `direction.py` — DSP 核心（分类、方位、ITD/ILD、注意力数据源）；
+- `overlay.py` — 雷达渲染（注意力机制、前后修正、+/- 显示）；
+- `audio_capture.py` — WASAPI 回环/进程捕获 + 录音；
+- `tests/` — 57 项回归测试（每个实测 bug 都有对应测试）。
 
-```bash
-pip install pyinstaller
-pyinstaller AudioRadarFolder.spec   # 目录版（推荐，避免 QtWebEngine 白屏）
-```
+## 许可证与致谢
 
-# 测试
-
-```bash
-python -m unittest discover -s tests      # 41 项全过
-python tools/simulate_game.py             # 12 秒合成对局端到端验证（雨+绕圈脚步+枪声+自身脚步/枪声）
-python tools/render_overlay_test.py       # 离屏渲染雷达效果图
-```
-
----
-
-# 上游原文（Visual Audio Overlay）
-
-## What it is
-
-Visual Audio Overlay listens to your PC's audio and draws a sleek, transparent,
-Fortnite-style circular radar on top of your game. When a sound happens, an arc
-lights up in the direction it came from, so you can *see* footsteps, gunshots,
-reloads, and ability cues the instant they play.
-
-It runs as a two-part app: a control panel you keep on a second monitor, and the
-radar overlay that floats over your game on your main screen.
-
-## Who it's for
-
-- Players with **single-sided deafness** or **hearing loss** who lose directional audio.
-- Anyone gaming with one earbud in, or in a quiet household, who still wants positional awareness.
-- Competitive players who want footsteps and other key cues filtered out from background noise.
-
-## Features
-
-- **Directional radar overlay.** Transparent, always-on-top, click-through. Arcs
-  fade in and out in the direction of each sound.
-- **Per-application capture.** Pick a single program (your game) so other apps
-  like Discord voice chat are ignored. Uses the Windows WASAPI process-loopback
-  API; pick **All (system audio)** to capture everything as before.
-- **Game-specific presets.** Built-in frequency band-pass filters (CS2, Valorant,
-  Fortnite, and more) isolate footsteps and ignore useless low-end rumble.
-- **Mono output for single-sided listeners.** Optionally play a mono down-mix of
-  the game to your headphones so you hear everything through your working ear,
-  while the overlay still shows full left/right direction. Needs a one-time
-  virtual-cable setup; see the Mono Output panel in the app.
-- **Smart audio boost.** Amplifies quiet, distant sounds so faint cues still register.
-- **Stereo and surround.** 7.1 / multi-channel headsets unlock 360 degree front/back
-  detection; stereo headsets run in left/right mode automatically.
-- **Saveable presets.** Store a full per-game setup - sensitivities, filters, the
-  captured program, monitor, mono output, and radar look - and switch in one click.
-- **Full customization.** Pick the radar's accent color and line thickness, with a
-  live preview that matches exactly what shows up in game.
-- **Non-intrusive by design.** It does not inject into game memory or modify any game
-  files. It simply reads the standard Windows audio output (WASAPI loopback).
-
-## How it works
-
-The app captures your system's audio output (the same signal going to your
-headphones) and analyzes the balance between channels to estimate the direction
-of each sound. That direction is drawn as an arc on the radar. Because it only
-reads audio you are already playing, there is no interaction with the game itself.
-
-## Disclaimer
-
-This tool reads only standard Windows audio output and does not read or modify
-game memory or files. It is intended as an accessibility aid. Anti-cheat policies
-vary between games, so use it at your own discretion.
-
-## License
-
-Copyright (c) 2026 Mike Zaugg.
-
-This project is **source-available**, not open source. It is licensed under the
-**Functional Source License, Version 1.1, MIT Future License (FSL-1.1-MIT)**. In
-short: you are free to use, modify, and contribute to the code for any purpose
-except building a competing product. Each release automatically becomes available
-under the permissive MIT license two years after it ships.
-
-See the [LICENSE](LICENSE) for the full terms.
+- 上游项目：[mike-s-zaugg/VisualAudioOverlay](https://github.com/mike-s-zaugg/VisualAudioOverlay)（FSL-1.1-MIT）；
+- 本仓库为同一许可下的改造分支，详见 `LICENSE` 与 `THIRD-PARTY-NOTICES.md`。
